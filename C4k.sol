@@ -5,12 +5,14 @@ import "AToken.sol";
 contract C4K{
     using SafeMath for uint256;
     
-    uint256  MONTH = 10;   //263520-->1 month secs
+    uint256  MONTH = 263520;   //263520-->1 month secs
     uint256 constant ONE_TIME_REFERRER_INCOME_PERCENT=10;
     uint256 constant ONE_TIME_AMBASSADOR_INCOME_PERCENT=10;
-    uint256 constant MIN_AMBASSADOR_AMOUNT = 50;   // 50k
+    uint256 constant MIN_AMBASSADOR_AMOUNT = 50000000000;   // 50k trx
     uint256 constant MAX_PROFIT = 11420; //114.2%
+    
     IERC20 public tokenA;
+    IERC20 public tokenB;
     
     address public admin;
     uint256 public adminAmount;
@@ -39,7 +41,6 @@ contract C4K{
         uint256 ambassadorIncomeToBeEarned;
         uint256 nextReferrerIncomeWithdrawnTime;
         uint256 nextAmbassadorIncomeWithdrawnTime;
-        uint256 checkpoint;
     }
     
     struct UserWithdrawnInfo{
@@ -54,7 +55,6 @@ contract C4K{
         _;
     }
     
-    // address public BToken;
     uint256 public totalInvestedTokens;
     mapping(address=>User) public users;
     mapping(address=>UserWithdrawnInfo) public withdrawns;
@@ -63,13 +63,16 @@ contract C4K{
     event withdrawProfitEvent(address _user,uint256 _amount,uint256 _lastWithdraw,uint256 _curr,uint256 _diff);
     event withdrawPrincipleEvent(address _user,uint256 _amount,uint256 _lastWithdraw,uint256 _curr,uint256 _diff);
     
-    constructor(IERC20 _addr) public{
-        tokenA = _addr;
+    constructor(IERC20 _addrA,IERC20 _addrB) public{
+        tokenA = _addrA;
+        tokenB = _addrB;
         admin = msg.sender;
     }
     
-    function invest(address _ref,uint256 _amount) public{
+    function invest(address _ref,uint256 _amount) external{
+        
         require(tokenA.allowance(msg.sender,address(this))>=_amount, "You must allow contract first to pay on your behalf");
+        
         tokenA.transferFrom(msg.sender,address(this),_amount);
         
         if(_ref==address(0) || users[_ref].isExist==false || _ref == msg.sender){
@@ -107,14 +110,6 @@ contract C4K{
         totalInvestedTokens = totalInvestedTokens.add(_amount);
     }
    
-    function checkIfAmbassador(address _user) public view returns(bool){
-        if(withdrawns[_user].totalReferralIncomeWithdrawn.add(users[_user].referrerIncomeToBeEarned)>=MIN_AMBASSADOR_AMOUNT){
-            return true;
-        }
-        else
-            return false;
-    }
-    
     function withdrawAmbassadorIncome(address _user) public{
         uint256 amount = users[_user].ambassadorIncomeToBeEarned.mul(ONE_TIME_AMBASSADOR_INCOME_PERCENT).div(100);
         require(amount>0, "must withdraw more than 0");
@@ -149,16 +144,20 @@ contract C4K{
                 }
                 totalProfit = totalProfit.add(profit);
                 if(profit>0){
-                emit withdrawProfitEvent(msg.sender,profit,users[msg.sender].deposits[i].profitTimestamp,block.timestamp,block.timestamp.sub(users[msg.sender].deposits[i].profitTimestamp));
-                users[msg.sender].deposits[i].profitTimestamp = block.timestamp;
-                users[msg.sender].deposits[i].withdrawnProfit = users[msg.sender].deposits[i].withdrawnProfit.add(profit);
+                    emit withdrawProfitEvent(msg.sender,profit,users[msg.sender].deposits[i].profitTimestamp,block.timestamp,block.timestamp.sub(users[msg.sender].deposits[i].profitTimestamp));
+                    users[msg.sender].deposits[i].profitTimestamp = block.timestamp;
+                    users[msg.sender].deposits[i].withdrawnProfit = users[msg.sender].deposits[i].withdrawnProfit.add(profit);
        
                 }
             }
         }
         
+        // transfer token B
+        tokenB.transfer(msg.sender,totalProfit);
+        
         withdrawns[msg.sender].totalProfitWithdrawn = withdrawns[msg.sender].totalProfitWithdrawn.add(totalProfit);
-         // tokenA.transferFrom(address(this),msg.sender,totalProfit);
+       
+        tokenA.transfer(msg.sender,totalProfit);
         
     }
     
@@ -182,8 +181,14 @@ contract C4K{
         }
         withdrawns[msg.sender].totalPrincipleWithdrawn = withdrawns[msg.sender].totalPrincipleWithdrawn.add(totalPrinciple);
        
-        // tokenA.transferFrom(address(this),msg.sender,totalPrinciple);
+        tokenA.transfer(msg.sender,totalPrinciple);
         
+    }
+    
+    function withdrawAdminAmount() public onlyAdmin{
+        require(adminAmount>0, "nothing to withdraw");
+        tokenA.transfer(admin,adminAmount);
+        adminAmount = 0;
     }
     
     function getPrincipleAmountToBeWithdrawn(address _user) public view returns(uint256){
@@ -218,19 +223,45 @@ contract C4K{
         return totalProfit;
     }
     
-    function withdrawAdminAmount() public onlyAdmin{
-        require(adminAmount>0, "nothing to withdraw");
-        tokenA.transfer(admin,adminAmount);
-        adminAmount = 0;
-    }
-    
     function getDepositsInfo(address _user,uint256 _index) public view returns(uint256 amount,uint256 profitStart,uint256 profitEnd,uint256 profitTimestamp){
         return (users[_user].deposits[_index].amount,users[_user].deposits[_index].profitStart,users[_user].deposits[_index].withdrawnProfit,users[_user].deposits[_index].profitTimestamp);
+    }
+    
+    function checkIfAmbassador(address _user) internal view returns(bool){
+        if(withdrawns[_user].totalReferralIncomeWithdrawn.add(users[_user].referrerIncomeToBeEarned)>=MIN_AMBASSADOR_AMOUNT){
+            return true;
+        }
+        else
+            return false;
     }
     
     // for testing only
     function changeTime(uint256 _time) public{
         MONTH = _time;        
+    }
+    
+    function getUserInfo(address _user) public view returns(uint256 totalReferrers,
+        uint256 referrerIncomeToBeEarned,
+        uint256 ambassadorIncomeToBeEarned){
+        return(
+            users[_user].totalReferrers,
+            users[_user].referrerIncomeToBeEarned,
+            users[_user].ambassadorIncomeToBeEarned
+            );
+    }
+    
+    function getUserWithdrawnInfo(address _user) public view returns(
+        uint256 totalProfitWithdrawn,
+        uint256 totalPrincipleWithdrawn,
+        uint256 totalReferralIncomeWithdrawn,
+        uint256 totalAmbassadorIncomeWithdrawn){
+            return (
+                withdrawns[_user].totalProfitWithdrawn,
+                withdrawns[_user].totalPrincipleWithdrawn,
+                withdrawns[_user].totalReferralIncomeWithdrawn,
+                withdrawns[_user].totalReferralIncomeWithdrawn
+                );
+        
     }
     
 }
