@@ -1,4 +1,4 @@
-pragma solidity ^0.6.0;
+pragma solidity >=0.5.0;
 
 contract SS{
     using SafeMath for uint256;
@@ -39,15 +39,16 @@ contract SS{
         uint256 count;
         uint256 prevInvest;
     }
+    
     struct PoolUserStruct {
         bool isExist;
         uint id;
         address down1;
         address down2;
     }
+    
     struct Income{
         uint256 rewardEarned;
-        uint256 levelIncomeEarned;
     }
     
     mapping (address => PoolUserStruct) public pool1users;
@@ -99,11 +100,8 @@ contract SS{
         LevelIncome.push(1);
         LevelIncome.push(1);
         
-        //add pool
         PoolPrice.push(TRX.mul(100));
-        
-        //change to 500
-        PoolPrice.push(TRX.mul(200));
+        PoolPrice.push(TRX.mul(500));
         PoolPrice.push(TRX.mul(1500));
         PoolPrice.push(TRX.mul(2000));
         PoolPrice.push(TRX.mul(2500));
@@ -118,12 +116,17 @@ contract SS{
         require(users[msg.sender].isExist == false, "user already have active investment");
         require(msg.value>=MIN_AMOUNT, "must pay minimum amount");
         require((msg.value.sub(TRX.mul(10)))%10==0, "you must pay in multiple of 10");
-        require(users[msg.sender].hold == 0, "user is active");
+       
+        if(users[msg.sender].hold>0){
+            reInvest();
+        }
         
-        // 10 trx to admin
-        address(uint256(owner)).transfer(TRX.mul(10));
-        
-        _invest(msg.sender,_ref,msg.value.sub(TRX.mul(10)));    
+        else{
+            // 10 trx to admin
+            address(uint256(owner)).transfer(TRX.mul(10));
+            
+            _invest(msg.sender,_ref,msg.value.sub(TRX.mul(10)));
+        }
     }
     
     function _invest(address _user,address _ref,uint256 _amount) internal {
@@ -170,6 +173,7 @@ contract SS{
                 break;
             }
             users[_ref].levelIncome = users[_ref].levelIncome .add(LevelIncome[i].mul(_amount).div(10000));
+            address(uint256(_ref)).transfer(LevelIncome[i].mul(_amount).div(10000));
              _ref = users[_ref].referrer;
         }
        
@@ -353,7 +357,7 @@ contract SS{
             markettingWallet = markettingWallet.add(amount.div(2));
     }
     
-    function finalizeData(address _user) public{
+    function finalizeData(address _user) internal{
         
         users[_user].prevInvest = users[_user].invested;
         users[_user].invested = 0;
@@ -396,12 +400,6 @@ contract SS{
         
         
     }
-    // function withdrawLevelIncome() public{
-    //         incomes[msg.sender].levelIncomeEarned = incomes[msg.sender].levelIncomeEarned.add(users[msg.sender].levelIncome);
-    //         msg.sender.transfer(users[msg.sender].levelIncome);
-    //         users[msg.sender].levelIncome = 0;
-            
-    // }
     
     function withdrawAmount() public{
         giveROI(msg.sender);
@@ -423,14 +421,11 @@ contract SS{
         //transfer 20% to owner
         address(uint256(owner)).transfer(amount.mul(2).div(10));
         
-        amount = amount.add(users[msg.sender].levelIncome);
         msg.sender.transfer(amount.sub(amount.mul(2).div(10)));
         
         users[msg.sender].withdrawn = users[msg.sender].withdrawn.add(amount);
         users[msg.sender].withdrawWallet = 0;
-        
-        incomes[msg.sender].levelIncomeEarned = incomes[msg.sender].levelIncomeEarned.add(users[msg.sender].levelIncome);
-        users[msg.sender].levelIncome = 0;
+
         
         if(users[msg.sender].withdrawn==users[msg.sender].invested.mul(4) && users[msg.sender].hold == users[msg.sender].invested){
             finalizeData(msg.sender);
