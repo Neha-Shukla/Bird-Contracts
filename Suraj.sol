@@ -1,11 +1,11 @@
 pragma solidity >=0.5.0;
 
-contract SS{
+contract Tron5X{
     using SafeMath for uint256;
-    uint256 constant public MIN_AMOUNT = 110000000;   //110 TRX
+    uint256 constant public MIN_AMOUNT = 125000000;   //125 TRX
     uint256 constant public DAILY_ROI = 2;   //2%
     uint256 constant TRX = 1000000;
-    uint256 constant TIME = 1;
+    uint256 constant TIME = 1 days;
     
     address owner;
     uint256 totalUsers;
@@ -25,7 +25,6 @@ contract SS{
     
     struct User{
         address referrer;
-        uint256 levelIncome;
         uint256 invested;
         uint256 hold;
         uint256 withdrawn;
@@ -38,6 +37,7 @@ contract SS{
         uint256 poolAmoutWithdrawn;
         uint256 count;
         uint256 prevInvest;
+        uint256 totalDirectReferrals;
     }
     
     struct PoolUserStruct {
@@ -49,6 +49,7 @@ contract SS{
     
     struct Income{
         uint256 rewardEarned;
+        uint256 levelIncome;
     }
     
     mapping (address => PoolUserStruct) public pool1users;
@@ -80,6 +81,8 @@ contract SS{
      
     mapping(address=>User) public users;
     mapping(address=>Income) public incomes;
+    mapping(address=>uint256) public teamMembers;
+    
     event investedSuccessfullyEvent(address _user,address _ref,uint256 _amount);
    
     constructor() public{
@@ -112,23 +115,7 @@ contract SS{
         
     }
     
-    function invest(address _ref) external payable{
-        require(users[msg.sender].isExist == false, "user already have active investment");
-        require(msg.value>=MIN_AMOUNT, "must pay minimum amount");
-        require((msg.value.sub(TRX.mul(10)))%10==0, "you must pay in multiple of 10");
-       
-        if(users[msg.sender].hold>0){
-            reInvest();
-        }
-        
-        else{
-            // 10 trx to admin
-            address(uint256(owner)).transfer(TRX.mul(10));
-            
-            _invest(msg.sender,_ref,msg.value.sub(TRX.mul(10)));
-        }
-    }
-    
+    // internal functions
     function _invest(address _user,address _ref,uint256 _amount) internal {
         
         
@@ -144,13 +131,15 @@ contract SS{
             _ref = users[_user].referrer;
         }
         totalUsers = totalUsers.add(1);
-       
+        users[_ref].totalDirectReferrals = users[_ref].totalDirectReferrals.add(1);
         users[_user].referrer = _ref;
+        
         if(_amount>=TRX.mul(2500)){
             users[_ref].count = users[_ref].count.add(1);
             if(users[_ref].count >= 10){
                 incomes[_ref].rewardEarned = incomes[_ref].rewardEarned.add(_amount.mul(5).div(100)); 
-                address(uint256(_ref)).transfer(_amount.mul(5).div(100));
+                address(uint256(_ref)).transfer((_amount.mul(5).div(100)).sub((_amount.mul(5).div(100)).div(10)));
+                address(uint256(_ref)).transfer((_amount.mul(5).div(100)).div(10));
             }
         }
         users[_user].invested = _amount;
@@ -172,11 +161,108 @@ contract SS{
             if(_ref==address(0)){
                 break;
             }
-            users[_ref].levelIncome = users[_ref].levelIncome .add(LevelIncome[i].mul(_amount).div(10000));
-            address(uint256(_ref)).transfer(LevelIncome[i].mul(_amount).div(10000));
+            uint256 amount = incomes[_ref].levelIncome .add(LevelIncome[i].mul(_amount).div(10000));
+            incomes[_ref].levelIncome = incomes[_ref].levelIncome .add(amount);
+            address(uint256(_ref)).transfer(amount.sub(amount.div(10)));
+            address(uint256(_ref)).transfer(amount.div(10));
+            teamMembers[_ref] = teamMembers[_ref].add(1);
              _ref = users[_ref].referrer;
         }
        
+    }
+    
+    function dividePoolAmount(address _user,uint256 _poolNumber) internal{
+            uint256 amount = PoolPrice[_poolNumber-1].mul(3);
+                users[_user].withdrawWallet = users[_user].withdrawWallet.add(amount.div(2));
+                users[_user].poolAmoutWithdrawn = users[_user].poolAmoutWithdrawn.add(amount.div(2));
+            
+            markettingWallet = markettingWallet.add(amount.div(2));
+    }
+    
+    function finalizeData(address _user) internal{
+        
+        users[_user].prevInvest = users[_user].invested;
+        users[_user].invested = 0;
+        users[_user].hold = users[_user].prevInvest;
+        users[_user].isExist = false;
+        users[_user].withdrawn = 0;
+        users[_user].startTime = 0;
+        users[_user].referrer = address(0);
+        users[_user].poolWallet = 0;
+        incomes[_user].levelIncome = 0;
+        incomes[_user].rewardEarned = 0;
+        teamMembers[_user] = 0;
+        users[_user].poolAmoutWithdrawn = 0;
+        users[_user].ROIAmount = 0;
+        users[_user].ROITime = 0;
+    }
+    
+    function getDailyROI(address _user) internal view returns(uint256){
+        uint256 amount=0;
+        if(users[_user].ROIAmount < users[_user].invested.mul(4)){
+         amount = (users[_user].invested.mul(DAILY_ROI).mul(block.timestamp.sub(users[_user].ROITime)).div(100).div(TIME));
+        if(users[_user].ROIAmount.add(amount)>=users[_user].invested.mul(4)){
+         amount = (users[_user].invested.mul(4)).sub(users[_user].ROIAmount);
+        }
+        }
+        return amount;
+    }
+    
+    function getPoolWallet(address _user) internal view returns(uint256){
+        uint256 amount =getDailyROI(_user);
+        return amount.div(2);
+    }
+    
+    function giveROI(address _user) internal{
+        users[_user].poolWallet = users[_user].poolWallet.add(getPoolWallet(_user));
+        markettingWallet = markettingWallet.add(getPoolWallet(_user));
+        uint256 amount = getDailyROI(_user);
+        users[_user].ROIAmount = users[_user].ROIAmount.add(amount);
+        users[_user].withdrawWallet = users[_user].withdrawWallet.add(amount.div(2));
+        if(amount>0)
+        users[_user].ROITime = block.timestamp;
+    }
+    
+    function reInvest() internal{
+        require(users[msg.sender].hold == users[msg.sender].prevInvest, "your id is still active");
+        
+        // user must have invested previously
+        require(users[msg.sender].prevInvest>0,"you need to invest first");
+        
+        require((msg.value.sub(TRX.mul(25)))%10==0, "you must pay in multiple of 10");
+        
+        // 10 trx to admin
+        address(uint256(owner)).transfer(TRX.mul(25));
+        
+        // amount paid must be greater than or equal to previously invested amount
+        require(msg.value>=users[msg.sender].prevInvest.add(TRX.mul(25)), "low investment not allowed");
+        
+        // add hold amount and current amount
+        uint256 investmentAmount = users[msg.sender].hold.add(msg.value.sub(TRX.mul(25)));
+        
+        users[msg.sender].hold = 0;
+        
+        // call invest
+        _invest(msg.sender,users[msg.sender].referrer,investmentAmount);
+    }
+    
+    
+    // external setter functions
+    function invest(address _ref) external payable{
+        require(users[msg.sender].isExist == false, "user already have active investment");
+        require(msg.value>=MIN_AMOUNT, "must pay minimum amount");
+        require((msg.value.sub(TRX.mul(25)))%10==0, "you must pay in multiple of 10");
+       
+        if(users[msg.sender].hold>0){
+            reInvest();
+        }
+        
+        else{
+            // 10 trx to admin
+            address(uint256(owner)).transfer(TRX.mul(10));
+            
+            _invest(msg.sender,_ref,msg.value.sub(TRX.mul(25)));
+        }
     }
     
     function buyPackage(uint256 _poolNumber) public{
@@ -189,10 +275,6 @@ contract SS{
         // deduct pool wallet amount
          users[msg.sender].poolWallet = users[msg.sender].poolWallet.sub(PoolPrice[_poolNumber-1]);
         
-        // add user to given Pool
-        // check if any user's tree completes
-            // if yes then give them amount and remove them from Pool
-            // if not then do nothing
         if(_poolNumber==1){
             require(!pool1users[msg.sender].isExist, "you have purchased the pool before");
             pool1currUserID = pool1currUserID+1;
@@ -348,62 +430,9 @@ contract SS{
         }
         
     }
-    
-    function dividePoolAmount(address _user,uint256 _poolNumber) internal{
-            uint256 amount = PoolPrice[_poolNumber-1].mul(3);
-                users[_user].withdrawWallet = users[_user].withdrawWallet.add(amount.div(2));
-                users[_user].poolAmoutWithdrawn = users[_user].poolAmoutWithdrawn.add(amount.div(2));
-            
-            markettingWallet = markettingWallet.add(amount.div(2));
-    }
-    
-    function finalizeData(address _user) internal{
         
-        users[_user].prevInvest = users[_user].invested;
-        users[_user].invested = 0;
-        users[_user].hold = users[_user].prevInvest;
-        users[_user].isExist = false;
-        users[_user].withdrawn = 0;
-        users[_user].startTime = 0;
-        users[_user].referrer = address(0);
-        users[_user].poolWallet = 0;
-        users[_user].levelIncome = 0;
-        users[_user].poolAmoutWithdrawn = 0;
-        users[_user].ROIAmount = 0;
-        users[_user].ROITime = 0;
-    }
-    
-    function getDailyROI(address _user) public view returns(uint256){
-        uint256 amount=0;
-        if(users[_user].ROIAmount < users[_user].invested.mul(4)){
-         amount = (users[_user].invested.mul(DAILY_ROI).mul(block.timestamp.sub(users[_user].ROITime)).div(100).div(TIME));
-        if(users[_user].ROIAmount.add(amount)>=users[_user].invested.mul(4)){
-         amount = (users[_user].invested.mul(4)).sub(users[_user].ROIAmount);
-        }
-        }
-        return amount;
-    }
-    
-    function getPoolWallet(address _user) public view returns(uint256){
-        uint256 amount =getDailyROI(_user);
-        return amount.div(2);
-    }
-    
-    function giveROI(address _user) public{
-        users[_user].poolWallet = users[_user].poolWallet.add(getPoolWallet(_user));
-        markettingWallet = markettingWallet.add(getPoolWallet(_user));
-        uint256 amount = getDailyROI(_user);
-        users[_user].ROIAmount = users[_user].ROIAmount.add(amount);
-        users[_user].withdrawWallet = users[_user].withdrawWallet.add(amount.div(2));
-        if(amount>0)
-        users[_user].ROITime = block.timestamp;
-        
-        
-    }
-    
     function withdrawAmount() public{
         giveROI(msg.sender);
-        
         uint256 amount;
         if(users[msg.sender].withdrawWallet.add(users[msg.sender].withdrawn) > users[msg.sender].invested.mul(4)){
             amount = users[msg.sender].invested.mul(4).sub(users[msg.sender].withdrawn);
@@ -432,29 +461,87 @@ contract SS{
         } 
     }
     
-    function reInvest() public payable{
-        require(users[msg.sender].hold == users[msg.sender].prevInvest, "your id is still active");
-        
-        // user must have invested previously
-        require(users[msg.sender].prevInvest>0,"you need to invest first");
-        
-        require((msg.value.sub(TRX.mul(10)))%10==0, "you must pay in multiple of 10");
-        
-        // 10 trx to admin
-        address(uint256(owner)).transfer(TRX.mul(10));
-        
-        // amount paid must be greater than or equal to previously invested amount
-        require(msg.value>=users[msg.sender].prevInvest.add(TRX.mul(10)), "low investment not allowed");
-        
-        // add hold amount and current amount
-        uint256 investmentAmount = users[msg.sender].hold.add(msg.value.sub(TRX.mul(10)));
-        
-        users[msg.sender].hold = 0;
-        
-        // call invest
-        _invest(msg.sender,users[msg.sender].referrer,investmentAmount);
+    
+    // external getter functions
+    function getuserInfo(address _user) external view returns(uint256 _refferals,uint256 _totalmembers,uint256 _invested,uint256 _withdrawnAmount){
+        return (users[_user].totalDirectReferrals,teamMembers[_user],users[_user].invested,users[_user].withdrawn);
     }
     
+    function getWallets(address _user) external view returns(uint256 _poolWallet,uint256 _withdrawWallet,uint256 _hold){
+        uint256 withdrawableAmount = (getDailyROI(_user).div(2)).add(users[_user].withdrawWallet);
+        
+        return (getPoolWallet(_user),withdrawableAmount,users[_user].hold);
+    }
+    
+    function getEarnings(address _user) external view returns(uint256 _refferalIncome,uint256 _poolIncome,uint256 _rewardIncome){
+        return (incomes[_user].levelIncome,users[_user].poolAmoutWithdrawn,users[_user].withdrawn);
+    }
+    
+    function checkIfPoolActive(address _user,uint256 _poolNumber) external view returns(bool){
+        if(_poolNumber==1){
+            if(pool1users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==2){
+            if(pool2users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==3){
+            if(pool3users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==4){
+            if(pool4users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==5){
+            if(pool5users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==6){
+            if(pool6users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==7){
+            if(pool7users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==8){
+            if(pool8users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+        if(_poolNumber==9){
+            if(pool9users[_user].isExist == true){
+                return true;
+            }
+            else
+                return true;
+        }
+    }
 }
 
 library SafeMath {
