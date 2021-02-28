@@ -9,6 +9,7 @@ interface IERC20 {
     function transfer(address recipient, uint256 amount) external returns(bool);
     function approve(address spender, uint256 amount) external returns(bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns(bool);
+    function mint(address account, uint256 amount) external returns (bool);
     
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -32,7 +33,7 @@ contract StakeHere{
     address owner;
     
     // token address
-    IERC20 stakeToken = IERC20(0xd9145CCE52D386f254917e481eB44e9943F39138);
+    IERC20 stakeToken = IERC20(0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8);
 
     struct User{
         uint256 investedAmount;
@@ -173,6 +174,9 @@ contract StakeHere{
         }
     
         // mint token if not enough token in contract
+        if(stakeToken.balanceOf(address(this))<totalAmount){
+            stakeToken.mint(address(this),totalAmount);
+        }
         stakeToken.transfer(_user,totalAmount);
     }
     
@@ -213,6 +217,10 @@ contract StakeHere{
         }
         
         // mint token if not enough token in contract
+        if(stakeToken.balanceOf(address(this))<totalAmount){
+            stakeToken.mint(address(this),totalAmount);
+        }
+        
         stakeToken.transfer(_user, totalAmount);
     }
     
