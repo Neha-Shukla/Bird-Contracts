@@ -5,7 +5,7 @@ contract Tron5X{
     uint256 constant public MIN_AMOUNT = 125000000;   //125 TRX
     uint256 constant public DAILY_ROI = 2;   //2%
     uint256 constant TRX = 1000000;
-    uint256 constant TIME = 1 days;
+    uint256 constant TIME = 1;
     
     address owner;
     uint256 totalUsers;
@@ -52,7 +52,7 @@ contract Tron5X{
         uint256 levelIncome;
     }
     
-    mapping (address => PoolUserStruct) public pool1users;
+     mapping (address => PoolUserStruct) public pool1users;
      mapping (uint => address) public pool1userList;
      
      mapping (address => PoolUserStruct) public pool2users;
@@ -117,8 +117,6 @@ contract Tron5X{
     
     // internal functions
     function _invest(address _user,address _ref,uint256 _amount) internal {
-        
-        
         if(!users[_ref].isExist){
             _ref = owner;
         }
@@ -130,6 +128,7 @@ contract Tron5X{
         if(users[_user].referrer != address(0)){
             _ref = users[_user].referrer;
         }
+        
         totalUsers = totalUsers.add(1);
         users[_ref].totalDirectReferrals = users[_ref].totalDirectReferrals.add(1);
         users[_user].referrer = _ref;
@@ -138,8 +137,10 @@ contract Tron5X{
             users[_ref].count = users[_ref].count.add(1);
             if(users[_ref].count >= 10){
                 incomes[_ref].rewardEarned = incomes[_ref].rewardEarned.add(_amount.mul(5).div(100)); 
-                address(uint256(_ref)).transfer((_amount.mul(5).div(100)).sub((_amount.mul(5).div(100)).div(10)));
-                address(uint256(_ref)).transfer((_amount.mul(5).div(100)).div(10));
+                if(address(this).balance>_amount){
+                    address(uint256(_ref)).transfer((_amount.mul(5).div(100)).sub((_amount.mul(5).div(100)).div(10)));
+                    address(uint256(owner)).transfer((_amount.mul(5).div(100)).div(10));
+                }
             }
         }
         users[_user].invested = _amount;
@@ -150,25 +151,23 @@ contract Tron5X{
         //giveLevelIncome
         giveLevelIncome(_ref,_amount);
         
-    
-        
         emit investedSuccessfullyEvent(_user,_ref,_amount);
     }
     
     function giveLevelIncome(address _ref,uint256 _amount) internal{
-    
         for(uint256 i=0;i<15;i++){
             if(_ref==address(0)){
                 break;
             }
             uint256 amount = incomes[_ref].levelIncome .add(LevelIncome[i].mul(_amount).div(10000));
             incomes[_ref].levelIncome = incomes[_ref].levelIncome .add(amount);
-            address(uint256(_ref)).transfer(amount.sub(amount.div(10)));
-            address(uint256(_ref)).transfer(amount.div(10));
+            if(address(this).balance>=amount){
+                address(uint256(_ref)).transfer(amount.sub(amount.div(10)));
+                address(uint256(owner)).transfer(amount.div(10));
+            }
             teamMembers[_ref] = teamMembers[_ref].add(1);
-             _ref = users[_ref].referrer;
+            _ref = users[_ref].referrer;
         }
-       
     }
     
     function dividePoolAmount(address _user,uint256 _poolNumber) internal{
@@ -195,6 +194,7 @@ contract Tron5X{
         users[_user].poolAmoutWithdrawn = 0;
         users[_user].ROIAmount = 0;
         users[_user].ROITime = 0;
+        users[_user].totalDirectReferrals = 0;
     }
     
     function getDailyROI(address _user) internal view returns(uint256){
@@ -245,7 +245,6 @@ contract Tron5X{
         // call invest
         _invest(msg.sender,users[msg.sender].referrer,investmentAmount);
     }
-    
     
     // external setter functions
     function invest(address _ref) external payable{
@@ -461,7 +460,6 @@ contract Tron5X{
         } 
     }
     
-    
     // external getter functions
     function getuserInfo(address _user) external view returns(uint256 _refferals,uint256 _totalmembers,uint256 _invested,uint256 _withdrawnAmount){
         return (users[_user].totalDirectReferrals,teamMembers[_user],users[_user].invested,users[_user].withdrawn);
@@ -469,7 +467,6 @@ contract Tron5X{
     
     function getWallets(address _user) external view returns(uint256 _poolWallet,uint256 _withdrawWallet,uint256 _hold){
         uint256 withdrawableAmount = (getDailyROI(_user).div(2)).add(users[_user].withdrawWallet);
-        
         return (getPoolWallet(_user),withdrawableAmount,users[_user].hold);
     }
     
