@@ -52,6 +52,7 @@ contract Tron5X{
         uint256 levelIncome;
     }
     
+     mapping (address => uint256) public levelIncomeToBeWithdrawn;
      mapping (address => PoolUserStruct) public pool1users;
      mapping (uint => address) public pool1userList;
      
@@ -154,17 +155,14 @@ contract Tron5X{
         emit investedSuccessfullyEvent(_user,_ref,_amount);
     }
     
-    function giveLevelIncome(address _ref,uint256 _amount) internal{
+    function giveLevelIncome(address _ref, uint256 _amount) internal{
         for(uint256 i=0;i<15;i++){
             if(_ref==address(0)){
                 break;
             }
-            uint256 amount = incomes[_ref].levelIncome .add(LevelIncome[i].mul(_amount).div(10000));
-            incomes[_ref].levelIncome = incomes[_ref].levelIncome .add(amount);
-            if(address(this).balance>=amount){
-                address(uint256(_ref)).transfer(amount.sub(amount.div(10)));
-                address(uint256(owner)).transfer(amount.div(10));
-            }
+            uint256 amount = LevelIncome[i].mul(_amount).div(10000);
+            levelIncomeToBeWithdrawn[_ref] = levelIncomeToBeWithdrawn[_ref] .add(amount);
+            
             teamMembers[_ref] = teamMembers[_ref].add(1);
             _ref = users[_ref].referrer;
         }
@@ -437,7 +435,7 @@ contract Tron5X{
             amount = users[msg.sender].invested.mul(4).sub(users[msg.sender].withdrawn);
         }
         else{
-            amount = users[msg.sender].withdrawn.add(users[msg.sender].withdrawWallet);
+            amount = users[msg.sender].withdrawWallet;
         }
         if(users[msg.sender].withdrawn>=users[msg.sender].invested.mul(4)){
             users[msg.sender].hold = users[msg.sender].hold.add(users[msg.sender].withdrawWallet);
@@ -446,14 +444,20 @@ contract Tron5X{
             users[msg.sender].hold = users[msg.sender].hold.add((users[msg.sender].withdrawWallet.add(users[msg.sender].withdrawn).sub(users[msg.sender].invested.mul(4))));
         }
         
-        //transfer 20% to owner
-        address(uint256(owner)).transfer(amount.mul(2).div(10));
-        
-        msg.sender.transfer(amount.sub(amount.mul(2).div(10)));
-        
+        require(address(this).balance>=amount, "insufficient funds");
         users[msg.sender].withdrawn = users[msg.sender].withdrawn.add(amount);
         users[msg.sender].withdrawWallet = 0;
-
+        
+        amount = amount.add (levelIncomeToBeWithdrawn[msg.sender]);
+        
+        //transfer 20% to owner
+        require(address(this).balance>=amount, "insufficient balance");
+        
+        address(uint256(owner)).transfer(amount.mul(2).div(10));
+        msg.sender.transfer(amount.sub(amount.mul(2).div(10)));
+        incomes[msg.sender].levelIncome = incomes[msg.sender].levelIncome.add(levelIncomeToBeWithdrawn[msg.sender]);
+        levelIncomeToBeWithdrawn[msg.sender] = 0;
+        
         
         if(users[msg.sender].withdrawn==users[msg.sender].invested.mul(4) && users[msg.sender].hold == users[msg.sender].invested){
             finalizeData(msg.sender);
@@ -465,13 +469,13 @@ contract Tron5X{
         return (users[_user].totalDirectReferrals,teamMembers[_user],users[_user].invested,users[_user].withdrawn);
     }
     
-    function getWallets(address _user) external view returns(uint256 _poolWallet,uint256 _withdrawWallet,uint256 _hold){
+    function getWallets(address _user) external view returns(uint256 _poolWallet,uint256 _withdrawWallet,uint256 _hold,uint256 _refferalWallet){
         uint256 withdrawableAmount = (getDailyROI(_user).div(2)).add(users[_user].withdrawWallet);
-        return (getPoolWallet(_user),withdrawableAmount,users[_user].hold);
+        return (getPoolWallet(_user),withdrawableAmount,users[_user].hold,levelIncomeToBeWithdrawn[_user]);
     }
     
     function getEarnings(address _user) external view returns(uint256 _refferalIncome,uint256 _poolIncome,uint256 _rewardIncome){
-        return (incomes[_user].levelIncome,users[_user].poolAmoutWithdrawn,users[_user].withdrawn);
+        return (incomes[_user].levelIncome,users[_user].poolAmoutWithdrawn,incomes[_user].rewardEarned);
     }
     
     function checkIfPoolActive(address _user,uint256 _poolNumber) external view returns(bool){
