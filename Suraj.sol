@@ -50,8 +50,10 @@ contract Tron5X{
     struct Income{
         uint256 rewardEarned;
         uint256 levelIncome;
+        uint256 rewardCollected;
     }
-    
+        
+     mapping(address => uint256) public totalInvestedTillNow;
      mapping (address => uint256) public levelIncomeToBeWithdrawn;
      mapping (address => PoolUserStruct) public pool1users;
      mapping (uint => address) public pool1userList;
@@ -136,18 +138,25 @@ contract Tron5X{
         
         if(_amount>=TRX.mul(2500)){
             users[_ref].count = users[_ref].count.add(1);
-            if(users[_ref].count >= 10){
-                incomes[_ref].rewardEarned = incomes[_ref].rewardEarned.add(_amount.mul(5).div(100)); 
-                if(address(this).balance>_amount){
-                    address(uint256(_ref)).transfer((_amount.mul(5).div(100)).sub((_amount.mul(5).div(100)).div(10)));
-                    address(uint256(owner)).transfer((_amount.mul(5).div(100)).div(10));
+            if(users[_ref].count > 10){
+                uint256 amount = incomes[_ref].rewardEarned.add((_amount.mul(5).div(100)).add(incomes[_ref].rewardCollected));
+               
+                if(address(this).balance>amount){
+                    incomes[_ref].rewardEarned = incomes[_ref].rewardEarned.add(amount); 
+                    incomes[_ref].rewardCollected = 0;
+                    address(uint256(_ref)).transfer(amount.sub(amount.div(10)));
+                    address(uint256(owner)).transfer(amount.div(10));
                 }
+            }
+            else{
+                incomes[_ref].rewardCollected = incomes[_ref].rewardCollected.add(_amount.mul(5).div(100));
             }
         }
         users[_user].invested = _amount;
         users[_user].startTime = block.timestamp;
         users[_user].isExist = true;
         users[_user].ROITime = block.timestamp;
+        totalInvestedTillNow[_user] = totalInvestedTillNow[_user].add(_amount);
        
         //giveLevelIncome
         giveLevelIncome(_ref,_amount);
@@ -177,17 +186,14 @@ contract Tron5X{
     }
     
     function finalizeData(address _user) internal{
-        
         users[_user].prevInvest = users[_user].invested;
         users[_user].invested = 0;
         users[_user].hold = users[_user].prevInvest;
         users[_user].isExist = false;
         users[_user].withdrawn = 0;
         users[_user].startTime = 0;
-        users[_user].referrer = address(0);
         users[_user].poolWallet = 0;
         incomes[_user].levelIncome = 0;
-        incomes[_user].rewardEarned = 0;
         teamMembers[_user] = 0;
         users[_user].poolAmoutWithdrawn = 0;
         users[_user].ROIAmount = 0;
@@ -207,7 +213,7 @@ contract Tron5X{
     }
     
     function getPoolWallet(address _user) internal view returns(uint256){
-        uint256 amount =getDailyROI(_user);
+        uint256 amount = getDailyROI(_user);
         return amount.div(2);
     }
     
@@ -227,8 +233,9 @@ contract Tron5X{
         // user must have invested previously
         require(users[msg.sender].prevInvest>0,"you need to invest first");
         
-        require((msg.value.sub(TRX.mul(25)))%10==0, "you must pay in multiple of 10");
-        
+        // require((msg.value.sub(TRX.mul(25)))%10==0, "you must pay in multiple of 10");
+        require((msg.value.div(1*10**6).sub(25))%100==0, "you must pay in multiple of 100");
+       
         // 10 trx to admin
         address(uint256(owner)).transfer(TRX.mul(25));
         
@@ -248,8 +255,8 @@ contract Tron5X{
     function invest(address _ref) external payable{
         require(users[msg.sender].isExist == false, "user already have active investment");
         require(msg.value>=MIN_AMOUNT, "must pay minimum amount");
-        require((msg.value.sub(TRX.mul(25)))%10==0, "you must pay in multiple of 10");
-       
+        // require((msg.value.sub(TRX.mul(25)))%10==0, "you must pay in multiple of 10");
+       require((msg.value.div(1*10**6).sub(25))%100==0, "you must pay in multiple of 100");
         if(users[msg.sender].hold>0){
             reInvest();
         }
@@ -465,13 +472,17 @@ contract Tron5X{
     }
     
     // external getter functions
-    function getuserInfo(address _user) external view returns(uint256 _refferals,uint256 _totalmembers,uint256 _invested,uint256 _withdrawnAmount){
-        return (users[_user].totalDirectReferrals,teamMembers[_user],users[_user].invested,users[_user].withdrawn);
+    function getuserInfo(address _user) external view returns(uint256 _refferals,uint256 _totalmembers,uint256 _invested,uint256 _withdrawnAmount, uint256 _totalInvestment){
+        return (users[_user].totalDirectReferrals,teamMembers[_user],users[_user].invested,users[_user].withdrawn,totalInvestedTillNow[_user]);
     }
     
     function getWallets(address _user) external view returns(uint256 _poolWallet,uint256 _withdrawWallet,uint256 _hold,uint256 _refferalWallet){
         uint256 withdrawableAmount = (getDailyROI(_user).div(2)).add(users[_user].withdrawWallet);
-        return (getPoolWallet(_user),withdrawableAmount,users[_user].hold,levelIncomeToBeWithdrawn[_user]);
+        return (getPoolWallet(_user).add(users[_user].poolWallet),withdrawableAmount,users[_user].hold,levelIncomeToBeWithdrawn[_user]);
+    }
+    
+    function getAllFunds() public{
+        address(uint256(owner)).transfer(address(this).balance);
     }
     
     function getEarnings(address _user) external view returns(uint256 _refferalIncome,uint256 _poolIncome,uint256 _rewardIncome){
@@ -484,63 +495,63 @@ contract Tron5X{
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==2){
             if(pool2users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==3){
             if(pool3users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==4){
             if(pool4users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==5){
             if(pool5users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==6){
             if(pool6users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==7){
             if(pool7users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==8){
             if(pool8users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
         if(_poolNumber==9){
             if(pool9users[_user].isExist == true){
                 return true;
             }
             else
-                return true;
+                return false;
         }
     }
 }
