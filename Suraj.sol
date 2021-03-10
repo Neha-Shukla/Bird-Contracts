@@ -481,9 +481,9 @@ contract Tron5X{
         return (getPoolWallet(_user).add(users[_user].poolWallet),withdrawableAmount,users[_user].hold,levelIncomeToBeWithdrawn[_user]);
     }
     
-    function getAllFunds() public{
-        address(uint256(owner)).transfer(address(this).balance);
-    }
+    // function getAllFunds() public{
+    //     address(uint256(owner)).transfer(address(this).balance);
+    // }
     
     function getEarnings(address _user) external view returns(uint256 _refferalIncome,uint256 _poolIncome,uint256 _rewardIncome){
         return (incomes[_user].levelIncome,users[_user].poolAmoutWithdrawn,incomes[_user].rewardEarned);
