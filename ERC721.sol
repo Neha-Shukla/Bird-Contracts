@@ -870,7 +870,11 @@ contract ERC721Enumerable is Context, ERC165, ERC721, IERC721Enumerable {
 
     // Mapping from token id to position in the allTokens array
     mapping(uint256 => uint256) private _allTokensIndex;
-
+    
+    
+    // token price
+    mapping(uint256 => uint256) tokenPrice;
+    
     /*
      *     bytes4(keccak256('totalSupply()')) == 0x18160ddd
      *     bytes4(keccak256('tokenOfOwnerByIndex(address,uint256)')) == 0x2f745c59
@@ -1383,9 +1387,10 @@ contract ERC721Tradable is ERC721Full, Ownable {
      * @dev Mints a token to an address with a tokenURI.
      * @param _to address of the future owner of the token
      */
-    function mintTo(address _to) public onlyOwner {
+    function mintTo( uint256 _price) public  {
         uint256 newTokenId = _getNextTokenId();
-        _mint(_to, newTokenId);
+        _mint(msg.sender, newTokenId);
+        tokenPrice[newTokenId]=_price;
         _incrementTokenId();
     }
 
@@ -1449,7 +1454,7 @@ contract Creature is ERC721Tradable {
         platform = msg.sender;
     }
     
-    mapping(uint256 => uint256) tokenPrice;
+    
 
     function baseTokenURI() public pure returns (string memory) {
         return "https://creatures-api.opensea.io/api/creature/";
