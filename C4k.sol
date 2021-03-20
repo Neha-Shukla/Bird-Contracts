@@ -1,21 +1,44 @@
 pragma solidity ^0.6.0;
-import "AToken.sol";
 
+interface IERC20 {
+
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+// rank
+// 1 -> client
+// 2 -> leader
+// 3 -> totalAmbassadorIncomeWithdrawn
 
 contract C4K{
     using SafeMath for uint256;
+    address public owner;
+    uint256 constant MAX_PROFIT = 11991;   // 119.11991
+    uint256 constant MAX_PRINCIPLE = 300;  // 300%
+    uint256 constant AMBASSADOR_DIRECT_PERCENT =2940;  // 1.4 every month --> 29.4
+    uint256 constant AMBASSADOR_INDIRECT_PERCENT = 630;  // 6.3 every month  --> 0.3 every month
+    uint256 constant LEADER_PERCENT = 2310; // 23.1  --> 1.1 every month
+    uint256 constant ADMIN_DIRECT_PERCENT =  3780;  // 37.8  --> 1.8 every month   
+    uint256 constant ADMIN_INDIRECT_PERCENT = 840;  // 8.4  --> 0.4 every month
+    uint256 constant PROFIT_MONTHY = 571; // 5.71
+    uint256 constant ADMIN_DIRECT_MONTHLY = 180;  // 1.8
+    uint256 constant ADMIN_INDIRECT_MONTHLY = 40;  // 0.40
+    uint256 constant LEADER_MONTHLY = 110; // 1.1
+    uint256 constant AMBASSADOR_DIRECT_MONTHLY = 140;  // 1.4
+    uint256 constant AMBASSADOR_INDIRECT_MONTHLY = 30; // 0.3
+    uint256 constant MONTH = 1;   //263520-->1 month secs
     
-    uint256  MONTH = 263520;   //263520-->1 month secs
-    uint256 constant ONE_TIME_REFERRER_INCOME_PERCENT=10;
-    uint256 constant ONE_TIME_AMBASSADOR_INCOME_PERCENT=10;
-    uint256 constant MIN_AMBASSADOR_AMOUNT = 50000000000;   // 50k trx
-    uint256 constant MAX_PROFIT = 11420; //114.2%
-    
-    IERC20 public tokenA;
-    IERC20 public tokenB;
-    
-    address public admin;
-    uint256 public adminAmount;
+    IERC20 public NWT;
+    IERC20 public NTT;
+    uint256 public ownerAmount;
     
     uint256 public totalUsers;
     
@@ -34,54 +57,66 @@ contract C4K{
         uint256 id;
         Deposit[] deposits;
         uint256 totalReferrers;
-        bool isAmbassador;
+        uint256 totalLeaders;
+        uint256 rank;
         bool isExist;
         address referrer;
-        uint256 referrerIncomeToBeEarned;
-        uint256 ambassadorIncomeToBeEarned;
-        uint256 nextReferrerIncomeWithdrawnTime;
-        uint256 nextAmbassadorIncomeWithdrawnTime;
+        uint256 ambassadorDirectProfit;
+        uint256 leaderDirectProfit;
+        uint256 ambassadorInDirectProfit;
+        uint256 referralWithdrawnTime;
     }
     
     struct UserWithdrawnInfo{
         uint256 totalProfitWithdrawn;
         uint256 totalPrincipleWithdrawn;
         uint256 totalReferralIncomeWithdrawn;
-        uint256 totalAmbassadorIncomeWithdrawn;
     }
     
     modifier onlyAdmin{
-        require(msg.sender == admin);
+        require(msg.sender == owner);
         _;
     }
     
+    uint256[] public profitPercents;
     uint256 public totalInvestedTokens;
     mapping(address=>User) public users;
     mapping(address=>UserWithdrawnInfo) public withdrawns;
     
     event NewUserEntered(address _user,address _ref,uint256 _amount);
-    event withdrawProfitEvent(address _user,uint256 _amount,uint256 _lastWithdraw,uint256 _curr,uint256 _diff);
     event withdrawPrincipleEvent(address _user,uint256 _amount,uint256 _lastWithdraw,uint256 _curr,uint256 _diff);
+   
+    event withdrawProfitEvent(address _user,uint256 _amount,uint256 _lastWithdraw,uint256 _curr,uint256 _diff);
+    event withdrawIssueEvent(address _user,uint256 _amount,uint256 _lastWithdraw,uint256 _curr,uint256 _diff);
+    event referralIncome(address _user, uint256 _amount, uint256 _start,uint256 _now, uint256 _diff);
     
     constructor(IERC20 _addrA,IERC20 _addrB) public{
-        tokenA = _addrA;
-        tokenB = _addrB;
-        admin = msg.sender;
+        NWT = _addrA;
+        NTT = _addrB;
+        owner = msg.sender;
+        profitPercents.push(11);
+        profitPercents.push(4);
+        profitPercents.push(3);    
     }
     
-    function invest(address _ref,uint256 _amount) external{
+    /*
+    ------------------------------------------------------------------------>
+     internal  functions
+    ------------------------------------------------------------------------>
+    */
+    
+    function _invest(address _ref,uint256 _amount) internal{
+        require(NWT.allowance(msg.sender,address(this))>=_amount, "You must allow contract first to pay on your behalf");
         
-        require(tokenA.allowance(msg.sender,address(this))>=_amount, "You must allow contract first to pay on your behalf");
-        
-        tokenA.transferFrom(msg.sender,address(this),_amount);
-        
+        NWT.transferFrom(msg.sender,address(this),_amount);
         if(_ref==address(0) || users[_ref].isExist==false || _ref == msg.sender){
-            _ref=admin;
+            _ref=owner;
         }
         
-        if(msg.sender == admin){
+        if(msg.sender == owner){
             _ref=address(0);
         }
+        
         
         if(users[msg.sender].deposits.length==0){
             // new user
@@ -90,179 +125,301 @@ contract C4K{
             users[_ref].totalReferrers = users[_ref].totalReferrers.add(1);
             totalUsers = totalUsers.add(1);
             users[msg.sender].id=totalUsers;
-            users[msg.sender].nextAmbassadorIncomeWithdrawnTime = block.timestamp; 
-            users[msg.sender].nextReferrerIncomeWithdrawnTime = block.timestamp;
+            users[msg.sender].rank = 1;
+            users[msg.sender].referralWithdrawnTime = block.timestamp;
+            emit NewUserEntered(msg.sender,_ref,_amount);
         }
-        _ref = users[msg.sender].referrer;
         
         users[msg.sender].deposits.push(Deposit(_amount,block.timestamp,
         block.timestamp.add(MONTH.mul(4)),0,
         block.timestamp.add(MONTH.mul(12)),0,block.timestamp.add(MONTH.mul(12)),
         block.timestamp.add(MONTH.mul(4))));
         
-        adminAmount = adminAmount.add(_amount.mul(36).div(100));
-        users[_ref].referrerIncomeToBeEarned = users[_ref].referrerIncomeToBeEarned.add(_amount.mul(16).div(100));
+        _ref = users[msg.sender].referrer;
         
-        if(checkIfAmbassador(_ref)){
-            users[_ref].isAmbassador = true;
-            users[_ref].ambassadorIncomeToBeEarned = users[_ref].ambassadorIncomeToBeEarned.add(_amount.mul(22).div(100));
-        }
-        totalInvestedTokens = totalInvestedTokens.add(_amount);
-    }
-   
-    function withdrawAmbassadorIncome(address _user) public{
-        uint256 amount = users[_user].ambassadorIncomeToBeEarned.mul(ONE_TIME_AMBASSADOR_INCOME_PERCENT).div(100);
-        require(amount>0, "must withdraw more than 0");
-        require(users[_user].nextAmbassadorIncomeWithdrawnTime<=block.timestamp, "must withdraw after 1 month");
+         // 1.8% to owner every month --> 37.8
+        ownerAmount = ownerAmount.add(_amount.mul(ADMIN_DIRECT_PERCENT).div(10000));
         
-        users[_user].ambassadorIncomeToBeEarned = users[_user].ambassadorIncomeToBeEarned.sub(amount);
-        withdrawns[_user].totalAmbassadorIncomeWithdrawn =withdrawns[_user].totalAmbassadorIncomeWithdrawn.add(amount);
-        users[_user].nextAmbassadorIncomeWithdrawnTime = block.timestamp.add(MONTH);
-    }
-    
-    function withdrawReferrerIncome(address _user) public{
-        uint256 amount = users[_user].referrerIncomeToBeEarned.mul(ONE_TIME_REFERRER_INCOME_PERCENT).div(100);
-        require(amount>0, "must withdraw more than 0");
-        require(users[_user].nextReferrerIncomeWithdrawnTime<=block.timestamp, "must withdraw after 1 month");
-        
-        users[_user].referrerIncomeToBeEarned = users[_user].referrerIncomeToBeEarned.sub(amount);
-        withdrawns[_user].totalReferralIncomeWithdrawn =withdrawns[_user].totalReferralIncomeWithdrawn.add(amount);
-       
-        users[_user].nextReferrerIncomeWithdrawnTime = block.timestamp.add(MONTH);
- 
-    }
-    
-    function withdrawProfit() public{
-        uint256 totalProfit;
-        uint256 profit;
-        
-        for(uint256 i=0;i<users[msg.sender].deposits.length;i++){
-            if(users[msg.sender].deposits[i].withdrawnProfit<users[msg.sender].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
-                profit = (users[msg.sender].deposits[i].amount.mul(571).mul(block.timestamp.sub(users[msg.sender].deposits[i].profitTimestamp))).div(10000).div(MONTH);
-                if(users[msg.sender].deposits[i].withdrawnProfit.add(profit)>=users[msg.sender].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
-                    profit = (users[msg.sender].deposits[i].amount.mul(MAX_PROFIT).div(10000)).sub(users[msg.sender].deposits[i].withdrawnProfit);
-                }
-                totalProfit = totalProfit.add(profit);
-                if(profit>0){
-                    emit withdrawProfitEvent(msg.sender,profit,users[msg.sender].deposits[i].profitTimestamp,block.timestamp,block.timestamp.sub(users[msg.sender].deposits[i].profitTimestamp));
-                    users[msg.sender].deposits[i].profitTimestamp = block.timestamp;
-                    users[msg.sender].deposits[i].withdrawnProfit = users[msg.sender].deposits[i].withdrawnProfit.add(profit);
-       
-                }
+        if(users[_ref].totalReferrers>=2 && users[_ref].rank<2){
+            users[_ref].rank = 2;
+            users[users[_ref].referrer].totalLeaders = users[users[_ref].referrer].totalLeaders.add(1);
+            if(users[users[_ref].referrer].totalLeaders>=2){
+                users[users[_ref].referrer].rank = 3;
             }
         }
-        
-        // transfer token B
-        tokenB.transfer(msg.sender,totalProfit);
-        
-        withdrawns[msg.sender].totalProfitWithdrawn = withdrawns[msg.sender].totalProfitWithdrawn.add(totalProfit);
-       
-        tokenA.transfer(msg.sender,totalProfit);
-        
-    }
-    
-    function withdrawPrincipleAmount() public{
-        uint256 totalPrinciple;
-        uint256 principle;
-        for(uint256 i=0;i<users[msg.sender].deposits.length;i++){
-            if(users[msg.sender].deposits[i].withdrawnPrinciple<users[msg.sender].deposits[i].amount.mul(3)){
-                principle = (users[msg.sender].deposits[i].amount.mul(block.timestamp.sub(users[msg.sender].deposits[i].principleTimestamp))).div(MONTH.mul(6));
-                if(users[msg.sender].deposits[i].withdrawnPrinciple.add(principle)>=users[msg.sender].deposits[i].amount.mul(3)){
-                    principle = users[msg.sender].deposits[i].amount.mul(3).sub(users[msg.sender].deposits[i].withdrawnPrinciple);
-                    users[msg.sender].deposits[i].withdrawnPrinciple = users[msg.sender].deposits[i].withdrawnPrinciple.add(principle);
-                }
-                totalPrinciple = totalPrinciple.add(principle);
-                if(principle>0){
-                emit withdrawPrincipleEvent(msg.sender,principle,users[msg.sender].deposits[i].principleTimestamp,block.timestamp,block.timestamp.sub(users[msg.sender].deposits[i].principleTimestamp));
-                users[msg.sender].deposits[i].principleTimestamp = block.timestamp;
+            // From Direct Sale
+            
+           
+            // if referrer is ambassador then give 1.4 every month till 24 months --> 29.4
+            if(users[_ref].rank == 3){
+                users[_ref].ambassadorDirectProfit = users[_ref].ambassadorDirectProfit.add(_amount.mul(AMBASSADOR_DIRECT_PERCENT).div(10000));
+            }
+            
+            // if referrer is leader then give 1.1 every month till 24 months --> 23.1
+            if(users[_ref].rank == 2)
+            {
+                users[_ref].leaderDirectProfit = users[_ref].leaderDirectProfit.add(_amount.mul(LEADER_PERCENT).div(10000));
+            }
+            
+            /* From Indirect Sale
+            
+            If referrer is leader and referrer of leader is ambassador, 
+            ambassador will get 0.3% every month --> 6.31
+            and c4k admin will get 0.4% every month --> 8.4
+            
+            */
+            if(users[_ref].rank == 2 && users[users[_ref].referrer].rank == 3){
+                users[users[_ref].referrer].ambassadorInDirectProfit = users[users[_ref].referrer].ambassadorInDirectProfit
+                .add(_amount.mul(AMBASSADOR_INDIRECT_PERCENT).div(10000));
                 
-                }
+                ownerAmount = ownerAmount.add(_amount.mul(ADMIN_INDIRECT_PERCENT).div(10000));
+                
             }
-        }
-        withdrawns[msg.sender].totalPrincipleWithdrawn = withdrawns[msg.sender].totalPrincipleWithdrawn.add(totalPrinciple);
-       
-        tokenA.transfer(msg.sender,totalPrinciple);
         
     }
     
-    function withdrawAdminAmount() public onlyAdmin{
-        require(adminAmount>0, "nothing to withdraw");
-        tokenA.transfer(admin,adminAmount);
-        adminAmount = 0;
+    function getProfit(address _user) internal  returns(uint256){
+        uint256 amount;
+        uint256 totalAmount;
+        for(uint256 i=0;i<users[_user].deposits.length;i++){
+            if(block.timestamp>=users[_user].deposits[i].profitStart){
+                if(users[_user].deposits[i].withdrawnProfit<users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
+                    amount = (users[_user].deposits[i].amount.mul(PROFIT_MONTHY).mul(block.timestamp.sub(users[_user].deposits[i].profitTimestamp))).div(10000).div(MONTH);
+                }
+                if(users[_user].deposits[i].withdrawnProfit.add(amount)>=users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
+                    amount = (users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)).sub(users[_user].deposits[i].withdrawnProfit);
+                }
+                totalAmount = totalAmount.add(amount);
+            }
+            emit withdrawProfitEvent(_user,amount,users[_user].deposits[i].profitTimestamp,
+            block.timestamp, block.timestamp.sub(users[_user].deposits[i].profitTimestamp));
+      
+             if(amount>0){
+                users[_user].deposits[i].profitTimestamp = block.timestamp;
+            }
+            users[_user].deposits[i].withdrawnProfit = users[_user].deposits[i].withdrawnProfit.add(amount);
+              }
+              withdrawns[_user].totalProfitWithdrawn = withdrawns[_user].totalProfitWithdrawn.add(amount);
+     
+        return totalAmount;
     }
     
-    function getPrincipleAmountToBeWithdrawn(address _user) public view returns(uint256){
+    function getPrinciple(address _user) internal  returns(uint256){
         uint256 totalPrinciple;
         uint256 principle;
         for(uint256 i=0;i<users[_user].deposits.length;i++){
-            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount.mul(3)){
+            if(block.timestamp<users[_user].deposits[i].principleStart)
+            continue;
+            if(block.timestamp>=users[_user].deposits[i].principleStart){
+            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
                 principle = (users[_user].deposits[i].amount.mul(block.timestamp.sub(users[_user].deposits[i].principleTimestamp))).div(MONTH.mul(6));
-                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount.mul(3)){
-                    principle = users[_user].deposits[i].amount.mul(3).sub(users[_user].deposits[i].withdrawnPrinciple);
+                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
+                    principle = (users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)).sub(users[_user].deposits[i].withdrawnPrinciple);
                 }
+                users[_user].deposits[i].withdrawnPrinciple = users[_user].deposits[i].withdrawnPrinciple.add(principle);
                 totalPrinciple = totalPrinciple.add(principle);
              }
-        }
+            }
+            emit withdrawPrincipleEvent(_user,principle,users[_user].deposits[i].principleTimestamp,
+            block.timestamp, block.timestamp.sub(users[_user].deposits[i].principleTimestamp));
+      
+            if(principle>0){
+                users[_user].deposits[i].principleTimestamp = block.timestamp;
+            }
+               }
+        
+        withdrawns[_user].totalPrincipleWithdrawn = withdrawns[_user].totalPrincipleWithdrawn.add(totalPrinciple);
+     
         return totalPrinciple;
     }
     
-    function getProfitAmountToBeWithdrawn(address _user) public view returns(uint256){
-        uint256 totalProfit;
-        uint256 profit;
+    // profit + principle
+    function getWithdrawAbleAmount(address _user) internal returns(uint256){
+        uint256 amount;
+        amount = getPrinciple(_user).add(getProfit(_user));
+        return amount;
+    }
+    
+    // direct and indirect incomes
+    function getWithdrawableReferralIncome(address _user) internal  returns(uint256){
+        uint256 amount1;
+        uint256 amount2;
+        uint256 amount3;
         
+        require(block.timestamp.sub(users[_user].referralWithdrawnTime)>=MONTH,"You can withdraw again only after 1 month");
+        
+        amount1 = users[_user].leaderDirectProfit.mul(LEADER_MONTHLY).div(10000).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        if(amount1>=users[_user].leaderDirectProfit)
+        {
+            amount1 = users[_user].leaderDirectProfit;
+        }
+        users[_user].leaderDirectProfit = users[_user].leaderDirectProfit.sub(amount1);
+        
+        
+        amount2 = users[_user].ambassadorDirectProfit.mul(AMBASSADOR_DIRECT_MONTHLY).div(10000).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        if(amount2>=users[_user].ambassadorDirectProfit)
+        {
+            amount2 = users[_user].ambassadorDirectProfit;
+        }
+        users[_user].ambassadorDirectProfit = users[_user].ambassadorDirectProfit.sub(amount2);
+        
+        
+        amount3 = users[_user].ambassadorInDirectProfit.mul(AMBASSADOR_INDIRECT_MONTHLY).div(10000).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        if(amount3>=users[_user].ambassadorInDirectProfit)
+        {
+            amount3 = users[_user].ambassadorInDirectProfit;
+        }
+        users[_user].ambassadorInDirectProfit = users[_user].ambassadorInDirectProfit.sub(amount3);
+        
+        
+         emit referralIncome(_user,amount1.add(amount2).add(amount3),users[_user].referralWithdrawnTime,
+        block.timestamp,block.timestamp.sub(users[_user].referralWithdrawnTime));
+        
+        users[_user].referralWithdrawnTime = block.timestamp;
+       withdrawns[_user].totalReferralIncomeWithdrawn = withdrawns[_user].totalReferralIncomeWithdrawn.add(amount1.add(amount2).add(amount3));
+     
+        return amount1.add(amount2).add(amount3);
+    }
+    
+    /*
+    ------------------------------------------------------------------------>
+     external setter functions
+    ------------------------------------------------------------------------>
+    */
+    
+    // invest
+    function invest(address _ref,uint256 _amount) external{
+        _invest(_ref,_amount);
+    }
+    
+    // profits withdraw in NTT tokens  (mothly profit+referral Income (ambassador+leader)
+    function withdrawProfits() external{
+        uint256 amount = getWithdrawableReferralIncome(msg.sender).add(getProfit(msg.sender));
+        NTT.transfer(msg.sender,amount);
+    }
+    
+    // principle withdraw in NWT tokens
+    function withdrawPrinciple() external{
+        NWT.transfer(msg.sender,getPrinciple(msg.sender));
+    }
+    
+    function withdrawOwnerAmount() external onlyAdmin{
+        NTT.transfer(owner,ownerAmount);
+        ownerAmount = 0;
+    }
+    
+    
+    /*
+    ------------------------------------------------------------------------>
+     Getter functions
+    ------------------------------------------------------------------------>
+    */
+    
+    function getProfitToBeWithdrawn(address _user) public view  returns(uint256){
+        uint256 amount;
+        uint256 totalAmount;
         for(uint256 i=0;i<users[_user].deposits.length;i++){
-            if(users[_user].deposits[i].withdrawnProfit<users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
-                profit = (users[_user].deposits[i].amount.mul(571).mul(block.timestamp.sub(users[_user].deposits[i].profitTimestamp))).div(10000).div(MONTH);
-                if(users[_user].deposits[i].withdrawnProfit.add(profit)>=users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
-                    profit = (users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)).sub(users[_user].deposits[i].withdrawnProfit);
+            if(block.timestamp>=users[_user].deposits[i].profitStart){
+                if(users[_user].deposits[i].withdrawnProfit<users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
+                    amount = (users[_user].deposits[i].amount.mul(PROFIT_MONTHY).mul(block.timestamp.sub(users[_user].deposits[i].profitTimestamp))).div(10000).div(MONTH);
                 }
-                totalProfit = totalProfit.add(profit);
-                
+                if(users[_user].deposits[i].withdrawnProfit.add(amount)>=users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)){
+                    amount = (users[_user].deposits[i].amount.mul(MAX_PROFIT).div(10000)).sub(users[_user].deposits[i].withdrawnProfit);
+                }
+                totalAmount = totalAmount.add(amount);
             }
         }
-        return totalProfit;
+        return totalAmount;
     }
     
-    function getDepositsInfo(address _user,uint256 _index) public view returns(uint256 amount,uint256 profitStart,uint256 profitEnd,uint256 profitTimestamp){
-        return (users[_user].deposits[_index].amount,users[_user].deposits[_index].profitStart,users[_user].deposits[_index].withdrawnProfit,users[_user].deposits[_index].profitTimestamp);
+    function getPricipleToBeWithdrawn(address _user) public view  returns(uint256){
+        uint256 totalPrinciple;
+        uint256 principle;
+        for(uint256 i=0;i<users[_user].deposits.length;i++){
+            if(block.timestamp<users[_user].deposits[i].principleStart)
+            continue;
+            if(block.timestamp>=users[_user].deposits[i].principleStart){
+            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
+                principle = (users[_user].deposits[i].amount.mul(block.timestamp.sub(users[_user].deposits[i].principleTimestamp))).div(MONTH.mul(6));
+                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
+                    principle = (users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)).sub(users[_user].deposits[i].withdrawnPrinciple);
+                }
+                   totalPrinciple = totalPrinciple.add(principle);
+             }
+            }
+           
+               }
+       
+        return totalPrinciple;
     }
     
-    function checkIfAmbassador(address _user) internal view returns(bool){
-        if(withdrawns[_user].totalReferralIncomeWithdrawn.add(users[_user].referrerIncomeToBeEarned)>=MIN_AMBASSADOR_AMOUNT){
-            return true;
-        }
-        else
-            return false;
-    }
-    
-    // for testing only
-    function changeTime(uint256 _time) public{
-        MONTH = _time;        
-    }
-    
-    function getUserInfo(address _user) public view returns(uint256 totalReferrers,
-        uint256 referrerIncomeToBeEarned,
-        uint256 ambassadorIncomeToBeEarned){
-        return(
-            users[_user].totalReferrers,
-            users[_user].referrerIncomeToBeEarned,
-            users[_user].ambassadorIncomeToBeEarned
-            );
-    }
-    
-    function getUserWithdrawnInfo(address _user) public view returns(
-        uint256 totalProfitWithdrawn,
-        uint256 totalPrincipleWithdrawn,
-        uint256 totalReferralIncomeWithdrawn,
-        uint256 totalAmbassadorIncomeWithdrawn){
-            return (
-                withdrawns[_user].totalProfitWithdrawn,
-                withdrawns[_user].totalPrincipleWithdrawn,
-                withdrawns[_user].totalReferralIncomeWithdrawn,
-                withdrawns[_user].totalReferralIncomeWithdrawn
-                );
+    function getReferralIncomeToBeWithdrawn(address _user) public view  returns(uint256){
+        uint256 amount1;
+        uint256 amount2;
+        uint256 amount3;
         
+        require(block.timestamp.sub(users[_user].referralWithdrawnTime)>=MONTH,"You can withdraw again only after 1 month");
+        
+        amount1 = users[_user].leaderDirectProfit.mul(LEADER_MONTHLY).div(10000).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        if(amount1>=users[_user].leaderDirectProfit)
+        {
+            amount1 = users[_user].leaderDirectProfit;
+        }
+        
+        amount2 = users[_user].ambassadorDirectProfit.mul(AMBASSADOR_DIRECT_MONTHLY).div(10000).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        if(amount2>=users[_user].ambassadorDirectProfit)
+        {
+            amount2 = users[_user].ambassadorDirectProfit;
+        }
+        
+        amount3 = users[_user].ambassadorInDirectProfit.mul(AMBASSADOR_INDIRECT_MONTHLY).div(10000).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        if(amount3>=users[_user].ambassadorInDirectProfit)
+        {
+            amount3 = users[_user].ambassadorInDirectProfit;
+        }
+       
+        
+        return amount1.add(amount2).add(amount3);
     }
     
+    function getReferralAmountToBeWithdrawn(address _user) public view returns(uint256){
+        return (getReferralAmountToBeWithdrawn(_user).add(getProfitToBeWithdrawn(_user)));
+    }
 }
 
+library SafeMath {
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+      assert(b <= a);
+      return a - b;
+    }
+
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+      uint256 c = a + b;
+      assert(c >= a);
+      return c;
+    }
+    
+        function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+        if (a == 0) {
+            return 0;
+        }
+
+        uint256 c = a * b;
+        require(c / a == b);
+
+        return c;
+    }
+
+    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b > 0);
+        uint256 c = a / b;
+
+        return c;
+    }
+}
