@@ -140,10 +140,10 @@ contract C4K{
          // 1.8% to owner every month --> 37.8
         ownerAmount = ownerAmount.add(_amount.mul(ADMIN_DIRECT_PERCENT).div(10000));
         
-        if(users[_ref].totalReferrers>=2 && users[_ref].rank<2){
+        if(users[_ref].totalReferrers>10 && users[_ref].rank<2){
             users[_ref].rank = 2;
             users[users[_ref].referrer].totalLeaders = users[users[_ref].referrer].totalLeaders.add(1);
-            if(users[users[_ref].referrer].totalLeaders>=2){
+            if(users[users[_ref].referrer].totalLeaders>10){
                 users[users[_ref].referrer].rank = 3;
             }
         }
@@ -248,8 +248,8 @@ contract C4K{
         
         require(block.timestamp.sub(users[_user].referralWithdrawnTime)>=MONTH,"You can withdraw again only after 1 month");
         
-        amount1 = users[_user].leaderDirectProfit.mul(LEADER_MONTHLY).div(10000).mul(block.timestamp
-        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        amount1 = users[_user].leaderDirectProfit.mul(LEADER_MONTHLY).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(10000).div(MONTH);
         if(amount1>=users[_user].leaderDirectProfit)
         {
             amount1 = users[_user].leaderDirectProfit;
@@ -257,8 +257,8 @@ contract C4K{
         users[_user].leaderDirectProfit = users[_user].leaderDirectProfit.sub(amount1);
         
         
-        amount2 = users[_user].ambassadorDirectProfit.mul(AMBASSADOR_DIRECT_MONTHLY).div(10000).mul(block.timestamp
-        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        amount2 = users[_user].ambassadorDirectProfit.mul(AMBASSADOR_DIRECT_MONTHLY).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(10000).div(MONTH);
         if(amount2>=users[_user].ambassadorDirectProfit)
         {
             amount2 = users[_user].ambassadorDirectProfit;
@@ -266,8 +266,8 @@ contract C4K{
         users[_user].ambassadorDirectProfit = users[_user].ambassadorDirectProfit.sub(amount2);
         
         
-        amount3 = users[_user].ambassadorInDirectProfit.mul(AMBASSADOR_INDIRECT_MONTHLY).div(10000).mul(block.timestamp
-        .sub(users[_user].referralWithdrawnTime)).div(MONTH);
+        amount3 = users[_user].ambassadorInDirectProfit.mul(AMBASSADOR_INDIRECT_MONTHLY).mul(block.timestamp
+        .sub(users[_user].referralWithdrawnTime)).div(10000).div(MONTH);
         if(amount3>=users[_user].ambassadorInDirectProfit)
         {
             amount3 = users[_user].ambassadorInDirectProfit;
@@ -388,8 +388,8 @@ contract C4K{
         return amount1.add(amount2).add(amount3);
     }
     
-    function getReferralAmountToBeWithdrawn(address _user) public view returns(uint256){
-        return (getReferralAmountToBeWithdrawn(_user).add(getProfitToBeWithdrawn(_user)));
+    function getWithdrawableNTT(address _user) public view returns(uint256){
+        return (getReferralIncomeToBeWithdrawn(_user).add(getProfitToBeWithdrawn(_user)));
     }
 }
 
