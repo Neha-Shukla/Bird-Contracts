@@ -136,7 +136,6 @@ contract C4K{
         block.timestamp.add(MONTH.mul(4))));
         
         _ref = users[msg.sender].referrer;
-        
          // 1.8% to owner every month --> 37.8
         ownerAmount = ownerAmount.add(_amount.mul(ADMIN_DIRECT_PERCENT).div(10000));
         
@@ -388,8 +387,50 @@ contract C4K{
         return amount1.add(amount2).add(amount3);
     }
     
-    function getWithdrawableNTT(address _user) public view returns(uint256){
+    function getWithdrawableNTP(address _user) public view returns(uint256){
         return (getReferralIncomeToBeWithdrawn(_user).add(getProfitToBeWithdrawn(_user)));
+    }
+    
+    function getDepositsInfo(address _user,uint256 _index) public view returns(uint256 amount,uint256 profitStart,uint256 profitEnd,uint256 profitTimestamp){
+        return (users[_user].deposits[_index].amount,users[_user].deposits[_index].profitStart,users[_user].deposits[_index].withdrawnProfit,users[_user].deposits[_index].profitTimestamp);
+    }
+    
+    function getUserInfo(address _user) public view returns(uint256 totalReferrers,
+    uint256 profitToBeEarned,
+        uint256 referrerIncomeToBeEarned,
+        uint256 principleToBeEarned,
+        uint256 totalInvestedAmount,
+        uint256 rank){
+        return(
+            users[_user].totalReferrers,
+            getProfitToBeWithdrawn(_user),
+            getReferralIncomeToBeWithdrawn(_user),
+            getPricipleToBeWithdrawn(_user),
+            getTotalInvestedAmount(_user),
+            users[_user].rank
+            );
+    }
+    
+        function getUserWithdrawnInfo(address _user) public view returns(
+        uint256 totalProfitWithdrawn,
+        uint256 totalPrincipleWithdrawn,
+        uint256 totalReferralIncomeWithdrawn,
+        uint256 totalAmbassadorIncomeWithdrawn){
+            return (
+                withdrawns[_user].totalProfitWithdrawn,
+                withdrawns[_user].totalPrincipleWithdrawn,
+                withdrawns[_user].totalReferralIncomeWithdrawn,
+                withdrawns[_user].totalReferralIncomeWithdrawn
+                );
+        
+    }
+    
+    function getTotalInvestedAmount(address _user) internal view returns(uint256){
+        uint256 amount;
+        for(uint256 i=0;i<users[_user].deposits.length;i++){
+            amount = amount.add(users[_user].deposits[i].amount);
+        }
+        return amount;
     }
 }
 
