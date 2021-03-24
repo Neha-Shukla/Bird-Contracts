@@ -1,5 +1,5 @@
 
-pragma solidity >=0.5.15;
+pragma solidity >=0.8.0;
 
 interface IERC20 {
 
@@ -23,10 +23,6 @@ contract TwoDMoon is IERC20 {
     string public constant symbol = "2DM";
     uint8 public constant decimals = 10;
     uint256 public price;
-
-    event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
-    event Transfer(address indexed from, address indexed to, uint tokens);
-
 
     mapping(address => uint256) balances;
 
