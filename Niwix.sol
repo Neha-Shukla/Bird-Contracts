@@ -22,7 +22,6 @@ contract C4K{
     using SafeMath for uint256;
     address public owner;
     uint256 constant MAX_PROFIT = 11991;   // 119.11991
-    uint256 constant MAX_PRINCIPLE = 300;  // 300%
     uint256 constant AMBASSADOR_DIRECT_PERCENT =2940;  // 1.4 every month --> 29.4
     uint256 constant AMBASSADOR_INDIRECT_PERCENT = 630;  // 6.3 every month  --> 0.3 every month
     uint256 constant LEADER_PERCENT = 2310; // 23.1  --> 1.1 every month
