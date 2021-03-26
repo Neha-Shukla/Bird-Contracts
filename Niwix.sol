@@ -1,4 +1,4 @@
-pragma solidity ^0.6.0;
+pragma solidity >=0.6.0;
 
 interface IERC20 {
 
@@ -174,6 +174,7 @@ contract C4K{
                 ownerAmount = ownerAmount.add(_amount.mul(ADMIN_INDIRECT_PERCENT).div(10000));
                 
             }
+            totalInvestedTokens = totalInvestedTokens.add(_amount);
         
     }
     
@@ -210,10 +211,10 @@ contract C4K{
             if(block.timestamp<users[_user].deposits[i].principleStart)
             continue;
             if(block.timestamp>=users[_user].deposits[i].principleStart){
-            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
-                principle = (users[_user].deposits[i].amount.mul(block.timestamp.sub(users[_user].deposits[i].principleTimestamp))).div(MONTH.mul(6));
-                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
-                    principle = (users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)).sub(users[_user].deposits[i].withdrawnPrinciple);
+            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount){
+                principle = (users[_user].deposits[i].amount.mul(block.timestamp.sub(users[_user].deposits[i].principleTimestamp)).mul(33)).div(100).div(MONTH.mul(6));
+                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount){
+                    principle = (users[_user].deposits[i].amount).sub(users[_user].deposits[i].withdrawnPrinciple);
                 }
                 users[_user].deposits[i].withdrawnPrinciple = users[_user].deposits[i].withdrawnPrinciple.add(principle);
                 totalPrinciple = totalPrinciple.add(principle);
@@ -341,10 +342,10 @@ contract C4K{
             if(block.timestamp<users[_user].deposits[i].principleStart)
             continue;
             if(block.timestamp>=users[_user].deposits[i].principleStart){
-            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
-                principle = (users[_user].deposits[i].amount.mul(block.timestamp.sub(users[_user].deposits[i].principleTimestamp))).div(MONTH.mul(6));
-                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)){
-                    principle = (users[_user].deposits[i].amount.mul(MAX_PRINCIPLE).div(100)).sub(users[_user].deposits[i].withdrawnPrinciple);
+            if(users[_user].deposits[i].withdrawnPrinciple<users[_user].deposits[i].amount){
+                principle = (users[_user].deposits[i].amount.mul(block.timestamp.sub(users[_user].deposits[i].principleTimestamp)).mul(33)).div(100).div(MONTH.mul(6));
+                if(users[_user].deposits[i].withdrawnPrinciple.add(principle)>=users[_user].deposits[i].amount){
+                    principle = (users[_user].deposits[i].amount).sub(users[_user].deposits[i].withdrawnPrinciple);
                 }
                    totalPrinciple = totalPrinciple.add(principle);
              }
