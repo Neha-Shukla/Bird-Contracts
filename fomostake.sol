@@ -10,13 +10,12 @@ contract FomoStake {
     using SafeMath for uint256;
 
     uint256 public LAUNCH_TIME;
-    uint256[] public REFERRAL_PERCENTS = [50, 20, 5, 5];
+    uint256[] public REFERRAL_PERCENTS = [40, 20, 10, 5,5,5,5,5,5,5];
     uint256 public constant INVEST_MIN_AMOUNT = 0.05 ether;
     uint256 public constant PERCENT_STEP = 5;
     uint256 public constant PERCENTS_DIVIDER = 1000;
     uint256 public constant TIME_STEP = 1 days;
     uint256 public constant DECREASE_DAY_STEP = 0.5 days;
-    uint256 public constant PENALTY_STEP = 200;
     uint256 public constant MARKETING_FEE = 50;
     uint256 public constant PROJECT_FEE = 50;
 
@@ -43,13 +42,13 @@ contract FomoStake {
         Deposit[] deposits;
         uint256 checkpoint;
         address referrer;
-        uint256[4] levels;
+        uint256[10] levels;
         uint256 bonus;
         uint256 totalBonus;
         uint256 holdBonus;
     }
 
-    mapping(address => User) internal users;
+    mapping(address => User) public users;
     mapping(address => Deposit[]) internal penaltyDeposits;
 
     address payable public marketingAddress;
@@ -99,12 +98,12 @@ contract FomoStake {
             LAUNCH_TIME = 1616590800;
         }
 
-        plans.push(Plan(14, 110));
-        plans.push(Plan(21, 95));
-        plans.push(Plan(28, 80));
-        plans.push(Plan(14, 110));
-        plans.push(Plan(21, 95));
-        plans.push(Plan(28, 80));
+        plans.push(Plan(14, 80));
+        plans.push(Plan(21, 65));
+        plans.push(Plan(28, 50));
+        plans.push(Plan(14, 80));
+        plans.push(Plan(21, 65));
+        plans.push(Plan(28, 50));
     }
 
     function invest(address referrer, uint8 plan)
@@ -135,7 +134,7 @@ contract FomoStake {
             }
 
             address upline = user.referrer;
-            for (uint256 i = 0; i < 4; i++) {
+            for (uint256 i = 0; i < 10; i++) {
                 if (upline != address(0)) {
                     users[upline].levels[i] = users[upline].levels[i].add(1);
                     upline = users[upline].referrer;
@@ -145,7 +144,7 @@ contract FomoStake {
 
         if (user.referrer != address(0)) {
             address upline = user.referrer;
-            for (uint256 i = 0; i < 4; i++) {
+            for (uint256 i = 0; i < 10; i++) {
                 if (upline != address(0)) {
                     uint256 amount =
                         msg.value.mul(REFERRAL_PERCENTS[i]).div(
@@ -244,7 +243,7 @@ contract FomoStake {
 
    
             address upline = user.referrer;
-            for (uint256 i = 0; i < 4; i++) {
+            for (uint256 i = 0; i < 10; i++) {
                 if (upline != address(0)) {
                     users[upline].levels[i] = users[upline].levels[i].add(1);
                     upline = users[upline].referrer;
@@ -252,7 +251,7 @@ contract FomoStake {
             }
      
             upline = user.referrer;
-            for (uint256 i = 0; i < 4; i++) {
+            for (uint256 i = 0; i < 10; i++) {
                 if (upline != address(0)) {
                     uint256 _amount =
                         amount.mul(REFERRAL_PERCENTS[i]).div(
@@ -430,22 +429,43 @@ contract FomoStake {
         return users[userAddress].referrer;
     }
 
-    function getUserDownlineCount(address userAddress)
+    function getUserDownlineCount(address userAddress,uint256 level)
         public
         view
         returns (
-            uint256,
-            uint256,
-            uint256,
             uint256
         )
     {
-        return (
-            users[userAddress].levels[0],
-            users[userAddress].levels[1],
-            users[userAddress].levels[2],
-            users[userAddress].levels[3]
-        );
+       if(level==1){
+           return users[userAddress].levels[0];
+       }
+       if(level==2){
+           return users[userAddress].levels[1];
+       }
+       if(level==3){
+           return users[userAddress].levels[2];
+       }
+       if(level==4){
+           return users[userAddress].levels[3];
+       }
+       if(level==5){
+           return users[userAddress].levels[4];
+       }
+       if(level==6){
+           return users[userAddress].levels[5];
+       }
+       if(level==7){
+           return users[userAddress].levels[6];
+       }
+       if(level==8){
+           return users[userAddress].levels[7];
+       }
+       if(level==9){
+           return users[userAddress].levels[8];
+       }
+       if(level==10){
+           return users[userAddress].levels[9];
+       }
     }
 
 
@@ -521,28 +541,7 @@ contract FomoStake {
         force = user.deposits[index].force;
     }
 
-    function getUserPenaltyDepositInfo(address userAddress, uint256 index)
-        public
-        view
-        returns (
-            uint8 plan,
-            uint256 percent,
-            uint256 amount,
-            uint256 profit,
-            uint256 start,
-            uint256 finish
-        )
-    {
-        require(index < penaltyDeposits[userAddress].length, "Invalid index");
-
-        plan = penaltyDeposits[userAddress][index].plan;
-        percent = penaltyDeposits[userAddress][index].percent;
-        amount = penaltyDeposits[userAddress][index].amount;
-        profit = penaltyDeposits[userAddress][index].profit;
-        start = penaltyDeposits[userAddress][index].start;
-        finish = penaltyDeposits[userAddress][index].finish;
-    }
-
+   
     function getChainID() public pure returns (uint256) {
         uint256 id;
         assembly {
